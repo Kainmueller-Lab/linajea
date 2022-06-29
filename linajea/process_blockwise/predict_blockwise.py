@@ -11,8 +11,7 @@ import daisy
 from funlib.run import run
 
 from .daisy_check_functions import check_function
-from ..construct_zarr_filename import construct_zarr_filename
-from ..datasets import get_source_roi
+from linajea.utils import construct_zarr_filename
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,9 @@ logger = logging.getLogger(__name__)
 def predict_blockwise(linajea_config):
     setup_dir = linajea_config.general.setup_dir
 
-    data = linajea_config.inference.data_source
+    data = linajea_config.inference_data.data_source
+    assert data.db_name is not None, "db_name must be set"
+    assert data.voxel_size is not None, "voxel_size must be set"
     voxel_size = daisy.Coordinate(data.voxel_size)
     predict_roi = daisy.Roi(offset=data.roi.offset,
                             shape=data.roi.shape)
@@ -29,9 +30,10 @@ def predict_blockwise(linajea_config):
             daisy.Coordinate(linajea_config.solve.parameters[0].context),
             daisy.Coordinate(linajea_config.solve.parameters[0].context))
     # but limit to actual file roi
-    predict_roi = predict_roi.intersect(
-        daisy.Roi(offset=data.datafile.file_roi.offset,
-                  shape=data.datafile.file_roi.shape))
+    if data.datafile is not None:
+        predict_roi = predict_roi.intersect(
+            daisy.Roi(offset=data.datafile.file_roi.offset,
+                      shape=data.datafile.file_roi.shape))
 
     # get context and total input and output ROI
     with open(os.path.join(setup_dir, 'test_net_config.json'), 'r') as f:
@@ -54,7 +56,7 @@ def predict_blockwise(linajea_config):
 
     output_zarr = construct_zarr_filename(linajea_config,
                                           data.datafile.filename,
-                                          linajea_config.inference.checkpoint)
+                                          linajea_config.inference_data.checkpoint)
 
     if linajea_config.predict.write_db_from_zarr:
         assert os.path.exists(output_zarr), \
@@ -146,18 +148,21 @@ def predict_worker(linajea_config):
     worker_time = time.time()
     job = linajea_config.predict.job
 
+    script_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "prediction")
     if linajea_config.predict.write_db_from_zarr:
-        path_to_script = linajea_config.predict.path_to_script_db_from_zarr
+        script = os.path.join(script_dir, "write_cells_from_zarr.py")
     else:
-        path_to_script = linajea_config.predict.path_to_script
+        script = os.path.join(script_dir, "predict.py")
 
     command = 'python -u %s --config %s' % (
-        path_to_script,
+        script,
         linajea_config.path)
 
-    if job.local:
+    if job.run_on == "local":
         cmd = [command]
-    elif os.path.isdir("/nrs/funke"):
+    elif job.run_on == "lsf":
         cmd = run(
             command=command.split(" "),
             queue=job.queue,

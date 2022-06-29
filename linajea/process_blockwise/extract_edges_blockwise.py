@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 
 def extract_edges_blockwise(linajea_config):
 
-    data = linajea_config.inference.data_source
-    voxel_size = daisy.Coordinate(data.voxel_size)
+    data = linajea_config.inference_data.data_source
     extract_roi = daisy.Roi(offset=data.roi.offset,
                             shape=data.roi.shape)
     # allow for solve context
@@ -23,9 +22,10 @@ def extract_edges_blockwise(linajea_config):
             daisy.Coordinate(linajea_config.solve.parameters[0].context),
             daisy.Coordinate(linajea_config.solve.parameters[0].context))
     # but limit to actual file roi
-    extract_roi = extract_roi.intersect(
-        daisy.Roi(offset=data.datafile.file_roi.offset,
-                  shape=data.datafile.file_roi.shape))
+    if data.datafile is not None:
+        extract_roi = extract_roi.intersect(
+            daisy.Roi(offset=data.datafile.file_roi.offset,
+                      shape=data.datafile.file_roi.shape))
 
     # block size in world units
     block_write_roi = daisy.Roi(
@@ -47,7 +47,8 @@ def extract_edges_blockwise(linajea_config):
     logger.info("Output ROI      = %s", extract_roi)
 
     logger.info("Starting block-wise processing...")
-    logger.info("Sample: %s", data.datafile.filename)
+    if data.datafile is not None:
+        logger.info("Sample: %s", data.datafile.filename)
     logger.info("DB: %s", data.db_name)
 
     # process block-wise
@@ -77,11 +78,11 @@ def extract_edges_in_block(
         "Finding edges in %s, reading from %s",
         block.write_roi, block.read_roi)
 
-    data = linajea_config.inference.data_source
+    data = linajea_config.inference_data.data_source
 
     start = time.time()
 
-    graph_provider = linajea.CandidateDatabase(
+    graph_provider = linajea.utils.CandidateDatabase(
         data.db_name,
         linajea_config.general.db_host,
         mode='r+')
